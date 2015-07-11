@@ -1,6 +1,7 @@
 package simplegit
 
 import (
+	"fmt"
 	"gopkg.in/libgit2/git2go.v22"
 	"os"
 	"strings"
@@ -13,8 +14,25 @@ type SimpleGit struct {
 	plainTextPass string
 }
 
-func NewSimpleGit(repo *git.Repository, user, password string) *SimpleGit {
-	return &SimpleGit{repo, user, password}
+func NewSimpleGit(repo *git.Repository, creds ...string) *SimpleGit {
+	var (
+		user = ""
+		pass = ""
+	)
+
+	switch len(creds) {
+	case 1:
+		user = creds[0]
+		break
+	case 2:
+		user = creds[0]
+		pass = creds[1]
+		break
+	default:
+		panic(fmt.Errorf("Invalid cred args!"))
+	}
+
+	return &SimpleGit{repo, user, pass}
 }
 
 func (s *SimpleGit) detectGitUser() string {
