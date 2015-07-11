@@ -1,11 +1,32 @@
 package simplegit
 
 import (
-	"github.com/libgit2/git2go"
+	"gopkg.in/libgit2/git2go.v22"
+	"os"
+	"strings"
 )
 
 type SimpleGit struct {
 	*git.Repository
+
+	User          string
+	plainTextPass string
+}
+
+func NewSimpleGit(repo *git.Repository, user, password string) *SimpleGit {
+	return &SimpleGit{repo, user, password}
+}
+
+func (s *SimpleGit) detectGitUser() string {
+	if s.User != "" {
+		return s.User
+	}
+
+	sgitUser := os.Getenv("SIMPLEGIT_USER")
+	if sgitUser == "" {
+		sgitUser = os.Getenv("USER")
+	}
+	return sgitUser
 }
 
 func (s *SimpleGit) AddFiles(files ...string) error {
@@ -49,6 +70,35 @@ func (s *SimpleGit) WriteTreeIndex() (treeId *git.Oid, err error) {
 
 	err = idx.Write()
 	return
+}
+
+func (s *SimpleGit) plainCredentialsCallback(url string, url_username string, allowedTypes git.CredType) (git.ErrorCode, *git.Cred) {
+	ret, cred := git.NewCredUserpassPlaintext(s.detectGitUser(), s.plainTextPass)
+	return git.ErrorCode(ret), &cred
+}
+
+func (s *SimpleGit) sshCredentialsCallback(url string, url_username string, allowedTypes git.CredType) (git.ErrorCode, *git.Cred) {
+	ret, cred := git.NewCredSshKeyFromAgent(s.detectGitUser())
+	return git.ErrorCode(ret), &cred
+}
+
+func (b *SimpleGit) PushHead(remote *git.Remote, projName string) error {
+	cbs := &git.RemoteCallbacks{}
+	if strings.HasPrefix(remote.Url(), "http") {
+		cbs.CredentialsCallback = b.plainCredentialsCallback
+	} else {
+		cbs.CredentialsCallback = b.sshCredentialsCallback
+	}
+
+	if err := remote.SetCallbacks(cbs); err != nil {
+		return err
+	}
+
+	sign, err := b.DefaultSignature()
+	if err != nil {
+		return err
+	}
+	return remote.Push([]string{"refs/heads/master"}, nil, sign, "")
 }
 
 func (b *SimpleGit) CommitHead(treeId *git.Oid, message string) error {
